@@ -1,11 +1,12 @@
 name: flutter-build-ios
-description: Setups the environment to build ios apps with flutter
+description: Setups the environment to build iOS apps with Flutter
 branding:
   icon: box
   color: green
+
 inputs:
   working-directory:
-    description: The root directory of the flutter app within this repository
+    description: The root directory of the Flutter app within this repository
     default: ./
   build-cmd:
     description: The full build command, can be used to add arguments
@@ -15,16 +16,19 @@ inputs:
     required: false
     default: "true" # we'll setup flutter fire just in case
   certificate-base64:
-    description: "base 64 of the p12 certificate"
+    description: "Base64 of the p12 certificate"
     required: true
   certificate-password:
-    description: "password of the above certificate"
+    description: "Password of the above certificate"
     required: true
   provisioning-profile-base64:
-    description: "base 64 of your.mobileprovision"
+    description: "Base64 of the primary .mobileprovision file"
+    required: true
+  one-signal-provisioning-profile-base64:
+    description: "Base64 of the OneSignal .mobileprovision file"
     required: true
   keychain-password:
-    description: "random string in secrets"
+    description: "Random string in secrets"
     required: true
 
 runs:
@@ -56,45 +60,46 @@ runs:
       run: dart pub global activate flutterfire_cli 0.3.0-dev.19 --overwrite
       shell: bash
 
-    # see https://docs.github.com/en/actions/deployment/deploying-xcode-applications/installing-an-apple-certificate-on-macos-runners-for-xcode-development for more info
-    - name: Install the Apple certificate and provisioning profile
+    - name: Install the Apple certificate and provisioning profiles
       shell: bash
       env:
         IOS_BUILD_CERTIFICATE_BASE64: ${{ inputs.certificate-base64 }}
         IOS_BUILD_CERTIFICATE_PASSWORD: ${{ inputs.certificate-password }}
         IOS_MOBILE_PROVISIONING_PROFILE_BASE64: ${{ inputs.provisioning-profile-base64 }}
+        IOS_ONE_SIGNAL_PROVISIONING_PROFILE_BASE64: ${{ inputs.one-signal-provisioning-profile-base64 }}
         IOS_GITHUB_KEYCHAIN_PASSWORD: ${{ inputs.keychain-password }}
-        # Slight modification in the script from https://docs.github.com/en/actions/deployment/deploying-xcode-applications/installing-an-apple-certificate-on-macos-runners-for-xcode-development
-        # that adds the uuid to the mobile provision so xcode can find it
       run: |
-        # create variables
+        # Paths for certificate and provisioning profiles
         CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
         KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-        PP_PATH=$RUNNER_TEMP/temp.mobileprovision
+        MAIN_PP_PATH=$RUNNER_TEMP/main.mobileprovision
+        ONESIGNAL_PP_PATH=$RUNNER_TEMP/onesignal.mobileprovision
 
-
-        # import certificate and provisioning profile from secrets
+        # Import certificate and provisioning profiles from secrets
         echo -n "$IOS_BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-        echo -n "$IOS_MOBILE_PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+        echo -n "$IOS_MOBILE_PROVISIONING_PROFILE_BASE64" | base64 --decode -o $MAIN_PP_PATH
+        echo -n "$IOS_ONE_SIGNAL_PROVISIONING_PROFILE_BASE64" | base64 --decode -o $ONESIGNAL_PP_PATH
 
-        # create temporary keychain
+        # Create temporary keychain
         security create-keychain -p "$IOS_GITHUB_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
         security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
         security unlock-keychain -p "$IOS_GITHUB_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-        # import certificate to keychain
+        # Import certificate to keychain
         security import $CERTIFICATE_PATH -P "$IOS_BUILD_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
         security list-keychain -d user -s $KEYCHAIN_PATH
         security find-identity -v
 
-        # use uuid for the name of provisioning profile
-        UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(/usr/bin/security cms -D -i $PP_PATH))
-
-        # apply provisioning profile
+        # Use UUID for the main app's provisioning profile
+        MAIN_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(/usr/bin/security cms -D -i $MAIN_PP_PATH))
         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-        cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+        cp $MAIN_PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$MAIN_UUID.mobileprovision
 
-    - name: List profiles
+        # Use UUID for the OneSignal provisioning profile
+        ONESIGNAL_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(/usr/bin/security cms -D -i $ONESIGNAL_PP_PATH))
+        cp $ONESIGNAL_PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$ONESIGNAL_UUID.mobileprovision
+
+    - name: List installed provisioning profiles
       run: cd ~/Library/MobileDevice/Provisioning\ Profiles && ls
       shell: bash
 
