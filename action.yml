@@ -55,11 +55,6 @@ runs:
         channel: "stable"
         cache: true
 
-    - name: Activate flutterfire
-      if: ${{ inputs.flutterfire }} == 'true'
-      run: dart pub global activate flutterfire_cli 0.3.0-dev.19 --overwrite
-      shell: bash
-
     - name: Install the Apple certificate and provisioning profiles
       shell: bash
       env:
