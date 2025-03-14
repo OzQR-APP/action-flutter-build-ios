@@ -98,6 +98,15 @@ runs:
       run: cd ~/Library/MobileDevice/Provisioning\ Profiles && ls
       shell: bash
 
+    - name: Get Flutter Dependencies
+      run: flutter pub get
+      
+    - name: Install CocoaPods Dependencies
+      run: |
+        cd ios
+        rm -rf Podfile.lock Pods
+        pod install --verbose
+
     - name: Build
       run: ${{ inputs.build-cmd }}
       shell: bash
